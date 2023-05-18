@@ -1,86 +1,74 @@
 <?php
+require_once 'vendor/autoload.php';
+use TelegramBot\Api\BotApi;
+use TelegramBot\Api\Types\Inline\InlineKeyboardMarkup;
+use TelegramBot\Api\Types\Inline\InlineKeyboardButton;
 
-// Устанавливаем токен вашего бота
-$token = "6107040954:AAFEHayVPz39VHKYsiJseEkXpM9bMAdDOEk";
-
-// Получаем запросы от Telegram API
-$update = json_decode(file_get_contents("php://input"), TRUE);
-
-// Получаем идентификатор чата и сообщение
-$chat_id = $update["message"]["chat"]["id"];
-$message = $update["message"]["text"];
-
-// Создаем функцию, которая отправляет сообщение пользователю
-function sendMessage($chat_id, $text) {
-    $url = "https://api.telegram.org/bot" . $token . "/sendMessage?chat_id=" . $chat_id . "&text=" . urlencode($text);
-    file_get_contents($url);
-}
-
-// Создаем обработчик команды /start
-if ($message == "/start") {
-    // Создаем клавиатуру с двумя кнопками
-    $keyboard = [
-        ["Подписаться на канал"],
-        ["Калькулятор"]
-    ];
-
-    // Конвертируем клавиатуру в JSON формат
-    $reply_markup = json_encode([
-        "keyboard" => $keyboard,
-        "resize_keyboard" => true,
-        "one_time_keyboard" => true
+$bot = new \TelegramBot\Api\Client('6107040954:AAFEHayVPz39VHKYsiJseEkXpM9bMAdDOEk');
+$bot->command('start', function ($message) use ($bot) {
+    $keyboard = new InlineKeyboardMarkup([
+        [new InlineKeyboardButton('Kanalga obuna bo\'ling', 'https://t.me/kunuzofficial')],
+        [new InlineKeyboardButton('Kalkulyator', 'calculator')]
     ]);
 
-    // Отправляем сообщение с клавиатурой
-    sendMessage($chat_id, "Выберите действие:", $reply_markup);
-}
+    $bot->sendMessage($message->getChat()->getId(), 'Assalomu aleykum.', null, false, null, $keyboard);
+});
 
-// Создаем обработчик команды "Калькулятор"
-else if ($message == "Калькулятор") {
-    // Создаем клавиатуру с двумя кнопками
-    $keyboard = [
-        ["12 месяцев"],
-        ["6 месяцев"]
-    ];
+$bot->on(function ($update) use ($bot) {
+    $callback = $update->getCallbackQuery();
+    if ($callback !== null && $callback->getData() === 'calculator') {
+        $keyboard = new InlineKeyboardMarkup([
+            [new InlineKeyboardButton('6 oy', 'six_months')],
+            [new InlineKeyboardButton('12 oy', 'twelve_months')]
+        ]);
 
-    // Конвертируем клавиатуру в JSON формат
-    $reply_markup = json_encode([
-        "keyboard" => $keyboard,
-        "resize_keyboard" => true,
-        "one_time_keyboard" => true
-    ]);
-
-    // Отправляем сообщение с клавиатурой
-    sendMessage($chat_id, "Выберите срок:", $reply_markup);
-}
-
-// Создаем обработчик команды "12 месяцев"
-else if ($message == "12 месяцев") {
-    // Отправляем сообщение с запросом суммы
-    sendMessage($chat_id, "Введите сумму:");
-
-    // Получаем сумму от пользователя
-    $sum = $update["message"]["text"];
-
-    // Рассчитываем результат по формуле
-    $result = $sum * 20 * 44 / 12;
-
-    // Отправляем сообщение с результатом
-    sendMessage($chat_id, "Результат: " . $result);
-}
-// Создаем обработчик команды "6 месяцев"
-else if ($message == "6 месяцев") {
-    // Отправляем сообщение с запросом суммы
-    sendMessage($chat_id, "Введите сумму:");
-    
-    // Получаем сумму от пользователя
-    $sum = $update["message"]["text"];
-    
-    // Рассчитываем результат по формуле
-    $result = $sum * 20 * 26 / 6;
-    
-    // Отправляем сообщение с результатом
-    sendMessage($chat_id, "Результат: " . $result);
+        $bot->editMessageText($callback->getMessage()->getChat()->getId(), $callback->getMessage()->getMessageId(), 'Davomiyligi qancha muddatga olasiz?', null, false, $keyboard);
     }
-    
-    ?>
+});
+
+$bot->on(function ($update) use ($bot) {
+    $callback = $update->getCallbackQuery();
+    if ($callback !== null && $callback->getData() === 'six_months') {
+        $bot->sendMessage($callback->getMessage()->getChat()->getId(), 'Summani kiriting:');
+        $bot->registerNextStepHandler($callback->getMessage(), 'calculate_six_months');
+    }
+});
+
+$bot->on(function ($update) use ($bot) {
+    $callback = $update->getCallbackQuery();
+    if ($callback !== null && $callback->getData() === 'twelve_months') {
+        $bot->sendMessage($callback->getMessage()->getChat()->getId(), 'Summani kiriting:');
+        $bot->registerNextStepHandler($callback->getMessage(), 'calculate_twelve_months');
+    }
+});
+
+$bot->onText(function ($message) use ($bot) {
+    if ($message->getReplyToMessage() !== null) {
+        if ($message->getReplyToMessage()->getText() === 'Summani kiriting:') {
+            $amount = floatval($message->getText());
+            if ($amount !== false) {
+                if ($message->getReplyToMessage()->getCallbackQuery()->getData() === 'calculate_six_months') {
+                    $amount_with_interest = $amount * 1.20 * 1.26 / 6;
+                    $installment = round($amount_with_interest / 1, 2);
+                    $formatted_installment = number_format($installment, 2, '.', ' ');
+                    $bot->sendMessage($message->getChat()->getId(), "6 oylik tolov $formatted_installment sum.\n\nBosh menuga qaytish uchun /start ni bosing");
+                    $bot->sendMessage($message->getChat()->getId(), '⬅️ Orqaga qaytish uchun', null, false, null, new InlineKeyboardMarkup([
+                        [new InlineKeyboardButton('⬅️ Orqaga', 'calculator')]
+                    ]));
+                } elseif ($message->getReplyToMessage()->getCallbackQuery()->getData() === 'calculate_twelve_months') {
+                    $amount_with_interest = $amount * 1.20 * 1.44 / 12;
+                    $installment = round($amount_with_interest / 1, 2);
+                    $formatted_installment = number_format($installment, 2, '.', ' ');
+                    $bot->sendMessage($message->getChat()->getId(), "12 oylik tolov $formatted_installment sum.\n\nBosh menuga qaytish uchun /start ni bosing");
+                    $bot->sendMessage($message->getChat()->getId(), '⬅️ Orqaga qaytish uchun', null, false, null, new InlineKeyboardMarkup([
+                        [new InlineKeyboardButton('⬅️ Orqaga', 'calculator')]
+                    ]));
+                }
+            } else {
+                $bot->sendMessage($message->getChat()->getId(), 'Yaroqli raqam kiriting.');
+            }
+        }
+    }
+});
+
+$bot->run();
